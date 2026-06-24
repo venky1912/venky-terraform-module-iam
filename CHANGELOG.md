@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/venky1912/venky-terraform-module-iam/compare/v1.0.0...v1.0.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* pin provider versions to supported range ([#3](https://github.com/venky1912/venky-terraform-module-iam/issues/3)) ([edb87bf](https://github.com/venky1912/venky-terraform-module-iam/commit/edb87bf72cec793bab1f1f6600cc34ba1a6721c2))
+
 ## [1.0.0](https://github.com/venky1912/venky-terraform-module-iam/compare/v0.1.1...v1.0.0) (2026-06-24)
 
 
