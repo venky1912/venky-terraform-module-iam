@@ -5,6 +5,8 @@ Terraform module for provisioning EKS-related IAM resources.
 
 ## Features
 
+> Least-privilege IAM module for EKS with IRSA support
+
 - EKS cluster IAM role with required policies
 - EKS node group IAM role with instance profile
 - IAM OIDC provider for EKS (IRSA)
