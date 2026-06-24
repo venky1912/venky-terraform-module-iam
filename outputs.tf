@@ -1,65 +1,64 @@
 ################################################################################
-# OIDC Provider
+# IAM Roles
 ################################################################################
 
-output "oidc_provider_arn" {
-  description = "ARN of the IAM OIDC provider"
-  value       = try(aws_iam_openid_connect_provider.eks[0].arn, null)
+output "role_arns" {
+  description = "Map of IAM role ARNs"
+  value       = { for k, v in aws_iam_role.this : k => v.arn }
 }
 
-output "oidc_provider_url" {
-  description = "URL of the IAM OIDC provider (without https://)"
-  value       = local.oidc_provider_url
-}
-
-################################################################################
-# Cluster Role
-################################################################################
-
-output "cluster_role_arn" {
-  description = "ARN of the EKS cluster IAM role"
-  value       = try(aws_iam_role.cluster[0].arn, null)
-}
-
-output "cluster_role_name" {
-  description = "Name of the EKS cluster IAM role"
-  value       = try(aws_iam_role.cluster[0].name, null)
+output "role_names" {
+  description = "Map of IAM role names"
+  value       = { for k, v in aws_iam_role.this : k => v.name }
 }
 
 ################################################################################
-# Node Role
+# Instance Profiles
 ################################################################################
 
-output "node_role_arn" {
-  description = "ARN of the EKS node group IAM role"
-  value       = try(aws_iam_role.node[0].arn, null)
+output "instance_profile_arns" {
+  description = "Map of instance profile ARNs"
+  value       = { for k, v in aws_iam_instance_profile.this : k => v.arn }
 }
 
-output "node_role_name" {
-  description = "Name of the EKS node group IAM role"
-  value       = try(aws_iam_role.node[0].name, null)
-}
-
-output "node_instance_profile_arn" {
-  description = "ARN of the EKS node instance profile"
-  value       = try(aws_iam_instance_profile.node[0].arn, null)
-}
-
-output "node_instance_profile_name" {
-  description = "Name of the EKS node instance profile"
-  value       = try(aws_iam_instance_profile.node[0].name, null)
+output "instance_profile_names" {
+  description = "Map of instance profile names"
+  value       = { for k, v in aws_iam_instance_profile.this : k => v.name }
 }
 
 ################################################################################
-# IRSA Roles
+# IAM Policies
 ################################################################################
 
-output "irsa_role_arns" {
-  description = "Map of IRSA role ARNs keyed by role name"
-  value       = { for k, v in aws_iam_role.irsa : k => v.arn }
+output "policy_arns" {
+  description = "Map of custom IAM policy ARNs"
+  value       = { for k, v in aws_iam_policy.this : k => v.arn }
 }
 
-output "irsa_role_names" {
-  description = "Map of IRSA role names keyed by role name"
-  value       = { for k, v in aws_iam_role.irsa : k => v.name }
+################################################################################
+# OIDC Providers
+################################################################################
+
+output "oidc_provider_arns" {
+  description = "Map of OIDC provider ARNs"
+  value       = { for k, v in aws_iam_openid_connect_provider.this : k => v.arn }
+}
+
+output "oidc_provider_urls" {
+  description = "Map of OIDC provider URLs (without https://)"
+  value       = { for k, v in aws_iam_openid_connect_provider.this : k => replace(v.url, "https://", "") }
+}
+
+################################################################################
+# Federated Roles
+################################################################################
+
+output "federated_role_arns" {
+  description = "Map of federated role ARNs"
+  value       = { for k, v in aws_iam_role.federated : k => v.arn }
+}
+
+output "federated_role_names" {
+  description = "Map of federated role names"
+  value       = { for k, v in aws_iam_role.federated : k => v.name }
 }

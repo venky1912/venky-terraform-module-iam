@@ -1,7 +1,11 @@
-output "cluster_role_arn" {
-  value = module.iam.cluster_role_arn
+output "role_arns" {
+  value = module.iam.role_arns
 }
 
-output "node_role_arn" {
-  value = module.iam.node_role_arn
+output "instance_profile_arns" {
+  value = module.iam.instance_profile_arns
+}
+
+output "policy_arns" {
+  value = module.iam.policy_arns
 }

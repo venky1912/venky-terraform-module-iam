@@ -14,73 +14,114 @@ variable "tags" {
 }
 
 ################################################################################
-# EKS OIDC Provider
+# IAM Roles
 ################################################################################
 
-variable "create_oidc_provider" {
-  description = "Whether to create an IAM OIDC provider for EKS"
-  type        = bool
-  default     = true
-}
-
-variable "oidc_provider_url" {
-  description = "EKS cluster OIDC issuer URL (e.g., https://oidc.eks.region.amazonaws.com/id/EXAMPLE)"
-  type        = string
-  default     = ""
-}
-
-################################################################################
-# EKS Cluster Role
-################################################################################
-
-variable "create_cluster_role" {
-  description = "Whether to create an IAM role for EKS cluster"
-  type        = bool
-  default     = true
-}
-
-variable "cluster_role_additional_policies" {
-  description = "Map of additional IAM policy ARNs to attach to the EKS cluster role"
-  type        = map(string)
-  default     = {}
-}
-
-################################################################################
-# EKS Node Group Role
-################################################################################
-
-variable "create_node_role" {
-  description = "Whether to create an IAM role for EKS node groups"
-  type        = bool
-  default     = true
-}
-
-variable "node_role_additional_policies" {
-  description = "Map of additional IAM policy ARNs to attach to the EKS node group role"
-  type        = map(string)
-  default     = {}
-}
-
-################################################################################
-# IRSA Roles
-################################################################################
-
-variable "irsa_roles" {
+variable "roles" {
   description = <<-EOT
-    Map of IRSA role configurations. Each key is the role name suffix.
+    Map of IAM roles to create. Supports any service or cross-account trust.
     Example:
     {
-      external_dns = {
-        namespace       = "kube-system"
-        service_account = "external-dns"
-        policy_arns     = ["arn:aws:iam::aws:policy/AmazonRoute53FullAccess"]
+      eks-cluster = {
+        description = "EKS cluster role"
+        trust_policy_statements = [{
+          actions   = ["sts:AssumeRole"]
+          principal = { Service = "eks.amazonaws.com" }
+        }]
+        policy_arns = ["arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"]
+        create_instance_profile = false
       }
     }
   EOT
   type = map(object({
-    namespace       = string
-    service_account = string
-    policy_arns     = list(string)
+    description = optional(string)
+    path        = optional(string)
+    trust_policy_statements = list(object({
+      actions   = list(string)
+      principal = map(any)
+      condition = optional(any)
+    }))
+    policy_arns             = optional(list(string), [])
+    create_instance_profile = optional(bool, false)
+    max_session_duration    = optional(number, 3600)
+    tags                    = optional(map(string), {})
+  }))
+  default = {}
+}
+
+################################################################################
+# IAM Policies
+################################################################################
+
+variable "policies" {
+  description = <<-EOT
+    Map of custom IAM policies to create.
+    Example:
+    {
+      s3-read = {
+        description = "Read access to S3"
+        policy_json = jsonencode({...})
+      }
+    }
+  EOT
+  type = map(object({
+    description = optional(string)
+    path        = optional(string)
+    policy_json = string
+  }))
+  default = {}
+}
+
+################################################################################
+# OIDC Providers
+################################################################################
+
+variable "oidc_providers" {
+  description = <<-EOT
+    Map of OIDC providers to create. Works for EKS, GitHub Actions, GitLab, etc.
+    Example:
+    {
+      eks = {
+        url            = "https://oidc.eks.eu-west-1.amazonaws.com/id/EXAMPLE"
+        client_id_list = ["sts.amazonaws.com"]
+      }
+      github = {
+        url            = "https://token.actions.githubusercontent.com"
+        client_id_list = ["sts.amazonaws.com"]
+      }
+    }
+  EOT
+  type = map(object({
+    url            = string
+    client_id_list = list(string)
+  }))
+  default = {}
+}
+
+################################################################################
+# Federated Roles (IRSA, GitHub Actions OIDC, etc.)
+################################################################################
+
+variable "federated_roles" {
+  description = <<-EOT
+    Map of web-identity federated roles (IRSA, GitHub Actions, GitLab, etc.)
+    Example:
+    {
+      external-dns = {
+        provider_arn = "arn:aws:iam::123456789:oidc-provider/oidc.eks.eu-west-1.amazonaws.com/id/EXAMPLE"
+        condition_string_equals = {
+          "oidc.eks.eu-west-1.amazonaws.com/id/EXAMPLE:sub" = "system:serviceaccount:kube-system:external-dns"
+          "oidc.eks.eu-west-1.amazonaws.com/id/EXAMPLE:aud" = "sts.amazonaws.com"
+        }
+        policy_arns = ["arn:aws:iam::aws:policy/AmazonRoute53FullAccess"]
+      }
+    }
+  EOT
+  type = map(object({
+    provider_arn            = string
+    condition_string_equals = map(string)
+    policy_arns             = optional(list(string), [])
+    tags                    = optional(map(string), {})
   }))
   default = {}
 }

@@ -1,151 +1,111 @@
 ################################################################################
-# EKS OIDC Provider
+# IAM Roles (Generic)
 ################################################################################
 
-data "tls_certificate" "eks" {
-  count = var.create_oidc_provider && var.oidc_provider_url != "" ? 1 : 0
+resource "aws_iam_role" "this" {
+  for_each = var.roles
 
-  url = var.oidc_provider_url
+  name        = "${var.name}-${each.key}"
+  description = try(each.value.description, "IAM role for ${each.key}")
+  path        = try(each.value.path, "/")
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      for statement in each.value.trust_policy_statements : {
+        Effect    = "Allow"
+        Action    = statement.actions
+        Principal = statement.principal
+        Condition = try(statement.condition, null)
+      }
+    ]
+  })
+
+  max_session_duration = try(each.value.max_session_duration, 3600)
+
+  tags = merge(var.tags, try(each.value.tags, {}), {
+    Name = "${var.name}-${each.key}"
+  })
 }
 
-resource "aws_iam_openid_connect_provider" "eks" {
-  count = var.create_oidc_provider && var.oidc_provider_url != "" ? 1 : 0
+resource "aws_iam_role_policy_attachment" "this" {
+  for_each = { for item in local.role_policy_attachments : "${item.role_key}-${item.policy_arn}" => item }
 
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks[0].certificates[0].sha1_fingerprint]
-  url             = var.oidc_provider_url
-
-  tags = merge(var.tags, {
-    Name = "${var.name}-eks-oidc"
-  })
+  policy_arn = each.value.policy_arn
+  role       = aws_iam_role.this[each.value.role_key].name
 }
 
 locals {
-  oidc_provider_arn = var.create_oidc_provider && var.oidc_provider_url != "" ? aws_iam_openid_connect_provider.eks[0].arn : ""
-  oidc_provider_url = var.oidc_provider_url != "" ? replace(var.oidc_provider_url, "https://", "") : ""
+  role_policy_attachments = flatten([
+    for role_key, role_config in var.roles : [
+      for policy_arn in try(role_config.policy_arns, []) : {
+        role_key   = role_key
+        policy_arn = policy_arn
+      }
+    ]
+  ])
 }
 
 ################################################################################
-# EKS Cluster IAM Role
+# IAM Instance Profiles
 ################################################################################
 
-resource "aws_iam_role" "cluster" {
-  count = var.create_cluster_role ? 1 : 0
+resource "aws_iam_instance_profile" "this" {
+  for_each = { for k, v in var.roles : k => v if try(v.create_instance_profile, false) }
 
-  name = "${var.name}-eks-cluster"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "eks.amazonaws.com"
-      }
-    }]
-  })
+  name = "${var.name}-${each.key}"
+  role = aws_iam_role.this[each.key].name
 
   tags = merge(var.tags, {
-    Name = "${var.name}-eks-cluster"
+    Name = "${var.name}-${each.key}"
   })
 }
 
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
-  count = var.create_cluster_role ? 1 : 0
-
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-  role       = aws_iam_role.cluster[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSVPCResourceController" {
-  count = var.create_cluster_role ? 1 : 0
-
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
-  role       = aws_iam_role.cluster[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_additional" {
-  for_each = var.create_cluster_role ? var.cluster_role_additional_policies : {}
-
-  policy_arn = each.value
-  role       = aws_iam_role.cluster[0].name
-}
-
 ################################################################################
-# EKS Node Group IAM Role
+# IAM Policies (Custom)
 ################################################################################
 
-resource "aws_iam_role" "node" {
-  count = var.create_node_role ? 1 : 0
+resource "aws_iam_policy" "this" {
+  for_each = var.policies
 
-  name = "${var.name}-eks-node"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      }
-    }]
-  })
+  name        = "${var.name}-${each.key}"
+  description = try(each.value.description, "Custom policy for ${each.key}")
+  path        = try(each.value.path, "/")
+  policy      = each.value.policy_json
 
   tags = merge(var.tags, {
-    Name = "${var.name}-eks-node"
+    Name = "${var.name}-${each.key}"
   })
 }
 
-resource "aws_iam_role_policy_attachment" "node_AmazonEKSWorkerNodePolicy" {
-  count = var.create_node_role ? 1 : 0
+################################################################################
+# OIDC Provider (Generic - works for EKS, GitHub Actions, etc.)
+################################################################################
 
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role       = aws_iam_role.node[0].name
+data "tls_certificate" "oidc" {
+  for_each = var.oidc_providers
+
+  url = each.value.url
 }
 
-resource "aws_iam_role_policy_attachment" "node_AmazonEKS_CNI_Policy" {
-  count = var.create_node_role ? 1 : 0
+resource "aws_iam_openid_connect_provider" "this" {
+  for_each = var.oidc_providers
 
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role       = aws_iam_role.node[0].name
-}
+  client_id_list  = each.value.client_id_list
+  thumbprint_list = [data.tls_certificate.oidc[each.key].certificates[0].sha1_fingerprint]
+  url             = each.value.url
 
-resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOnly" {
-  count = var.create_node_role ? 1 : 0
-
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-  role       = aws_iam_role.node[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "node_AmazonSSMManagedInstanceCore" {
-  count = var.create_node_role ? 1 : 0
-
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-  role       = aws_iam_role.node[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "node_additional" {
-  for_each = var.create_node_role ? var.node_role_additional_policies : {}
-
-  policy_arn = each.value
-  role       = aws_iam_role.node[0].name
-}
-
-resource "aws_iam_instance_profile" "node" {
-  count = var.create_node_role ? 1 : 0
-
-  name = "${var.name}-eks-node"
-  role = aws_iam_role.node[0].name
-
-  tags = var.tags
+  tags = merge(var.tags, {
+    Name = "${var.name}-${each.key}-oidc"
+  })
 }
 
 ################################################################################
-# IRSA Roles (IAM Roles for Service Accounts)
+# IRSA / Federated Roles (Web Identity)
 ################################################################################
 
-resource "aws_iam_role" "irsa" {
-  for_each = var.irsa_roles
+resource "aws_iam_role" "federated" {
+  for_each = var.federated_roles
 
   name = "${var.name}-${each.key}"
 
@@ -155,35 +115,30 @@ resource "aws_iam_role" "irsa" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Effect = "Allow"
       Principal = {
-        Federated = local.oidc_provider_arn
+        Federated = each.value.provider_arn
       }
       Condition = {
-        StringEquals = {
-          "${local.oidc_provider_url}:sub" = "system:serviceaccount:${each.value.namespace}:${each.value.service_account}"
-          "${local.oidc_provider_url}:aud" = "sts.amazonaws.com"
-        }
+        StringEquals = each.value.condition_string_equals
       }
     }]
   })
 
-  tags = merge(var.tags, {
-    Name           = "${var.name}-${each.key}"
-    ServiceAccount = each.value.service_account
-    Namespace      = each.value.namespace
+  tags = merge(var.tags, try(each.value.tags, {}), {
+    Name = "${var.name}-${each.key}"
   })
 }
 
-resource "aws_iam_role_policy_attachment" "irsa" {
-  for_each = { for item in local.irsa_policy_attachments : "${item.role_key}-${item.policy_arn}" => item }
+resource "aws_iam_role_policy_attachment" "federated" {
+  for_each = { for item in local.federated_policy_attachments : "${item.role_key}-${item.policy_arn}" => item }
 
   policy_arn = each.value.policy_arn
-  role       = aws_iam_role.irsa[each.value.role_key].name
+  role       = aws_iam_role.federated[each.value.role_key].name
 }
 
 locals {
-  irsa_policy_attachments = flatten([
-    for role_key, role_config in var.irsa_roles : [
-      for policy_arn in role_config.policy_arns : {
+  federated_policy_attachments = flatten([
+    for role_key, role_config in var.federated_roles : [
+      for policy_arn in try(role_config.policy_arns, []) : {
         role_key   = role_key
         policy_arn = policy_arn
       }
